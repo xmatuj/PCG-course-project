@@ -108,7 +108,7 @@
             // выходToolStripMenuItem
             // 
             this.выходToolStripMenuItem.Name = "выходToolStripMenuItem";
-            this.выходToolStripMenuItem.Size = new System.Drawing.Size(180, 22);
+            this.выходToolStripMenuItem.Size = new System.Drawing.Size(108, 22);
             this.выходToolStripMenuItem.Text = "Выход";
             this.выходToolStripMenuItem.Click += new System.EventHandler(this.выходToolStripMenuItem_Click);
             // 
@@ -124,7 +124,7 @@
             // dToolStripMenuItem
             // 
             this.dToolStripMenuItem.Name = "dToolStripMenuItem";
-            this.dToolStripMenuItem.Size = new System.Drawing.Size(180, 22);
+            this.dToolStripMenuItem.Size = new System.Drawing.Size(88, 22);
             this.dToolStripMenuItem.Text = "3D";
             this.dToolStripMenuItem.Click += new System.EventHandler(this.dToolStripMenuItem_Click);
             // 
@@ -134,20 +134,20 @@
             this.векторнаяToolStripMenuItem,
             this.растроваяToolStripMenuItem});
             this.dToolStripMenuItem1.Name = "dToolStripMenuItem1";
-            this.dToolStripMenuItem1.Size = new System.Drawing.Size(180, 22);
+            this.dToolStripMenuItem1.Size = new System.Drawing.Size(88, 22);
             this.dToolStripMenuItem1.Text = "2D";
             // 
             // векторнаяToolStripMenuItem
             // 
             this.векторнаяToolStripMenuItem.Name = "векторнаяToolStripMenuItem";
-            this.векторнаяToolStripMenuItem.Size = new System.Drawing.Size(180, 22);
+            this.векторнаяToolStripMenuItem.Size = new System.Drawing.Size(131, 22);
             this.векторнаяToolStripMenuItem.Text = "Векторная";
             this.векторнаяToolStripMenuItem.Click += new System.EventHandler(this.векторнаяToolStripMenuItem_Click);
             // 
             // растроваяToolStripMenuItem
             // 
             this.растроваяToolStripMenuItem.Name = "растроваяToolStripMenuItem";
-            this.растроваяToolStripMenuItem.Size = new System.Drawing.Size(180, 22);
+            this.растроваяToolStripMenuItem.Size = new System.Drawing.Size(131, 22);
             this.растроваяToolStripMenuItem.Text = "Растровая";
             this.растроваяToolStripMenuItem.Click += new System.EventHandler(this.растроваяToolStripMenuItem_Click);
             // 
@@ -192,19 +192,19 @@
             // освещениеToolStripMenuItem
             // 
             this.освещениеToolStripMenuItem.Name = "освещениеToolStripMenuItem";
-            this.освещениеToolStripMenuItem.Size = new System.Drawing.Size(180, 22);
+            this.освещениеToolStripMenuItem.Size = new System.Drawing.Size(138, 22);
             this.освещениеToolStripMenuItem.Text = "Освещение";
             // 
             // анимацияToolStripMenuItem
             // 
             this.анимацияToolStripMenuItem.Name = "анимацияToolStripMenuItem";
-            this.анимацияToolStripMenuItem.Size = new System.Drawing.Size(180, 22);
+            this.анимацияToolStripMenuItem.Size = new System.Drawing.Size(138, 22);
             this.анимацияToolStripMenuItem.Text = "Анимация";
             // 
             // звукToolStripMenuItem
             // 
             this.звукToolStripMenuItem.Name = "звукToolStripMenuItem";
-            this.звукToolStripMenuItem.Size = new System.Drawing.Size(180, 22);
+            this.звукToolStripMenuItem.Size = new System.Drawing.Size(138, 22);
             this.звукToolStripMenuItem.Text = "Звук";
             // 
             // справкаToolStripMenuItem
@@ -243,6 +243,7 @@
             this.toolStrip1.Size = new System.Drawing.Size(196, 657);
             this.toolStrip1.TabIndex = 2;
             this.toolStrip1.Text = "toolStrip1";
+            this.toolStrip1.ItemClicked += new System.Windows.Forms.ToolStripItemClickedEventHandler(this.toolStrip1_ItemClicked);
             // 
             // toolStripButton3D
             // 
@@ -341,7 +342,7 @@
             // 
             // RenderTimer
             // 
-            this.RenderTimer.Interval = 16;
+            this.RenderTimer.Interval = 8;
             this.RenderTimer.Tick += new System.EventHandler(this.RenderTimer_Tick);
             // 
             // openFileDialog1
