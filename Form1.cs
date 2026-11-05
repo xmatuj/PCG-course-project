@@ -32,22 +32,16 @@ namespace Mayorov_Matvey_PRI_123_course
 
         // === Сцена ===
         private int currentScene = 0;   // 0 — 3D, 1 — 2D-векторная, 2 — 2D-растровая
-        private readonly string[] sceneNames = { "3D (Зоопарк)", "2D-Векторная (Безье)", "2D-Растровая (Акварель)" };
+        private readonly string[] sceneNames = { "3D (Зоопарк)", "2D-Векторная (Безье)", "2D-Растровая (Спрайт)" };
 
         // === Флаги режимов ===
         private bool animationEnabled = true;
         private bool lightingEnabled = true;
-        private bool soundEnabled = true;
 
         // === Таймер и FPS ===
         private int frameCount = 0;
         private int fps = 0;
-        private float time = 0.0f; // Для анимации
-
-        // === Многопоточность (ЛР 3) ===
-        private object locker = new object();
-        private Thread physicsThread;
-        private bool physicsRunning = false;
+        private float time = 0.0f;
 
         // === Инициализация OpenGL ===
         private bool glInitialized = false;
@@ -56,21 +50,20 @@ namespace Mayorov_Matvey_PRI_123_course
         private float sparrowX = 0.0f;
         private float sparrowY = 2.0f;
         private float sparrowZ = 0.0f;
-        private float sparrowAngle = 0.0f;        // текущий угол поворота (градусы)
-        private float sparrowTargetAngle = 0.0f;  // угол, к которому нужно повернуться
-
-        // Для 2D-растровой сцены (ЛР 7, акварелизация)
-        private Bitmap originalImage;
-        private Bitmap filteredImage;
+        private float sparrowAngle = 0.0f;
+        private float sparrowTargetAngle = 0.0f;
 
         // Спрайт воробья (атлас)
         private Bitmap sparrowAtlas;
-        private int spriteFrameWidth = 64;   // ширина одного кадра
-        private int spriteFrameHeight = 64;  // высота одного кадра
-        private int spriteFrameCount = 4;    // количество кадров в атласе
-        private int currentSpriteFrame = 0;  // текущий кадр
-        private float spriteTimer = 0.0f;    // таймер анимации
-        private const float SPRITE_FRAME_TIME = 0.15f; // время на 1 кадр (сек)
+        private int spriteFrameWidth = 64;
+        private int spriteFrameHeight = 64;
+        private int spriteFrameCount = 4;
+        private int currentSpriteFrame = 0;
+        private float spriteTimer = 0.0f;
+        private const float SPRITE_FRAME_TIME = 0.15f;
+
+        // ID текстур для каждого кадра
+        private uint[] spriteTextures;
 
         public Form1()
         {
@@ -111,13 +104,9 @@ namespace Mayorov_Matvey_PRI_123_course
 
             glInitialized = true;
 
-            // Генерируем фрактал "Бинарное дерево" (ЛР 10, вариант 10)
+            // Генерируем фрактал "Бинарное дерево"
             fractalBranches.Clear();
             GenerateBinaryTree(AnT.Width / 2f, 0, 120, 0, 0);
-
-            // Создаем тестовое изображение для 2D-растровой сцены
-            originalImage = CreateTestImage();
-            filteredImage = ApplyWatercolorFilter(originalImage);
 
             // Загрузка атласа спрайта воробья
             try
@@ -126,10 +115,22 @@ namespace Mayorov_Matvey_PRI_123_course
                 if (File.Exists(atlasPath))
                 {
                     sparrowAtlas = new Bitmap(atlasPath);
-
-                    // Автоматически вычисляем размер кадра, если атлас горизонтальный
                     spriteFrameWidth = sparrowAtlas.Width / spriteFrameCount;
                     spriteFrameHeight = sparrowAtlas.Height;
+
+                    // Загружаем текстуры для всех кадров сразу
+                    spriteTextures = new uint[spriteFrameCount];
+                    for (int i = 0; i < spriteFrameCount; i++)
+                    {
+                        Bitmap frame = GetSpriteFrame(sparrowAtlas, i);
+                        Bitmap frameRGBA = new Bitmap(frame.Width, frame.Height, PixelFormat.Format32bppArgb);
+                        using (Graphics g = Graphics.FromImage(frameRGBA)) { g.DrawImage(frame, 0, 0); }
+
+                        spriteTextures[i] = LoadTextureFromBitmap(frameRGBA);
+
+                        frame.Dispose();
+                        frameRGBA.Dispose();
+                    }
                 }
                 else
                 {
@@ -158,9 +159,7 @@ namespace Mayorov_Matvey_PRI_123_course
             if (animationEnabled)
             {
                 time += 0.05f;
-
-                // Анимация спрайта
-                spriteTimer += 0.016f; // ~16 мс на кадр (60 FPS)
+                spriteTimer += 0.016f;
                 if (spriteTimer >= SPRITE_FRAME_TIME)
                 {
                     spriteTimer = 0.0f;
@@ -170,18 +169,15 @@ namespace Mayorov_Matvey_PRI_123_course
 
             // Плавный поворот к целевому углу
             float diff = sparrowTargetAngle - sparrowAngle;
-            // Нормализуем в диапазон [-180, 180], чтобы не крутиться на 350°
             if (diff > 180) diff -= 360;
             if (diff < -180) diff += 360;
 
-            // Плавно уменьшаем разницу
             float rotateSpeed = 6.0f;
             if (Math.Abs(diff) < rotateSpeed)
                 sparrowAngle = sparrowTargetAngle;
             else
                 sparrowAngle += Math.Sign(diff) * rotateSpeed;
 
-            // Приводим угол к диапазону [0, 360)
             if (sparrowAngle >= 360) sparrowAngle -= 360;
             if (sparrowAngle < 0) sparrowAngle += 360;
 
@@ -212,20 +208,31 @@ namespace Mayorov_Matvey_PRI_123_course
             }
 
             if (currentScene == 0)
-            {
                 Draw3DScene();
-            }
             else if (currentScene == 1)
-            {
                 Draw2DVectorScene();
-            }
             else if (currentScene == 2)
-            {
                 Draw2DRasterScene();
-            }
 
             Gl.glFlush();
             AnT.Invalidate();
+        }
+
+        // ==========================================
+        // 3D СЦЕНА (Зоопарк)
+        // ==========================================
+        private void Draw3DScene()
+        {
+            // Земля
+            Gl.glPushMatrix();
+            Gl.glColor3f(0.2f, 0.8f, 0.2f);
+            Gl.glTranslated(0, -0.1f, 0);
+            Gl.glScaled(20, 0.1, 20);
+            Glut.glutSolidCube(1.0f);
+            Gl.glPopMatrix();
+
+            // Воробей
+            DrawSparrow();
         }
 
         private void DrawSparrow()
@@ -237,14 +244,14 @@ namespace Mayorov_Matvey_PRI_123_course
             float wingAngle = animationEnabled ? (float)Math.Sin(time * 10) * 25 : 0;
             float tailAngle = animationEnabled ? (float)Math.Sin(time * 6) * 10 : 0;
 
-            // ---------- Тело ----------
+            // Тело
             Gl.glColor3f(0.55f, 0.38f, 0.20f);
             Gl.glPushMatrix();
             Gl.glScaled(0.45f, 0.40f, 0.70f);
             Glut.glutSolidSphere(1.0, 20, 20);
             Gl.glPopMatrix();
 
-            // ---------- Голова ----------
+            // Голова
             Gl.glPushMatrix();
             Gl.glTranslatef(0.0f, 0.35f, -0.55f);
             Gl.glColor3f(0.60f, 0.45f, 0.25f);
@@ -252,80 +259,62 @@ namespace Mayorov_Matvey_PRI_123_course
             Glut.glutSolidSphere(1.0, 16, 16);
             Gl.glPopMatrix();
 
-            // ---------- Шапочка (ВЫНЕСЕНА НА ПОВЕРХНОСТЬ) ----------
-            // Центр головы: (0, 0.35, -0.55), радиус 0.32
-            // Шапочка должна быть на верхней-задней части головы
+            // Шапочка
             Gl.glPushMatrix();
-            Gl.glTranslatef(0.0f, 0.68f, -0.55f); // Y = 0.35 + 0.33 (на поверхности)
-            Gl.glColor3f(0.20f, 0.12f, 0.06f);   // тёмно-коричневый
+            Gl.glTranslatef(0.0f, 0.68f, -0.55f);
+            Gl.glColor3f(0.20f, 0.12f, 0.06f);
             Gl.glScaled(0.30f, 0.10f, 0.30f);
             Glut.glutSolidSphere(1.0, 12, 12);
             Gl.glPopMatrix();
 
-            // ---------- Глаза (ВЫНЕСЕНЫ НА ПОВЕРХНОСТЬ) ----------
+            // Глаза
             Gl.glColor3f(0.05f, 0.05f, 0.05f);
-
-            // Левый глаз: сбоку-спереди головы
-            // Центр головы (0, 0.35, -0.55), смещение по X: ±0.28, по Y: +0.05, по Z: -0.20
             Gl.glPushMatrix();
             Gl.glTranslatef(-0.26f, 0.40f, -0.75f);
             Gl.glScaled(0.07f, 0.07f, 0.07f);
             Glut.glutSolidSphere(1.0, 8, 8);
             Gl.glPopMatrix();
 
-            // Правый глаз
             Gl.glPushMatrix();
             Gl.glTranslatef(0.26f, 0.40f, -0.75f);
             Gl.glScaled(0.07f, 0.07f, 0.07f);
             Glut.glutSolidSphere(1.0, 8, 8);
             Gl.glPopMatrix();
 
-            // ---------- Клюв ----------
+            // Клюв
             Gl.glPushMatrix();
-            Gl.glTranslatef(0.0f, 0.32f, -0.8f); // чуть ниже глаз, вперёд
-            Gl.glRotatef(180, 1, 0, 0);           // остриё вперёд (-Z)
-            Gl.glColor3f(0.95f, 0.70f, 0.10f);    // жёлто-оранжевый
+            Gl.glTranslatef(0.0f, 0.32f, -0.8f);
+            Gl.glRotatef(180, 1, 0, 0);
+            Gl.glColor3f(0.95f, 0.70f, 0.10f);
             Glut.glutSolidCone(0.08, 0.25, 10, 10);
             Gl.glPopMatrix();
 
-            // ---------- Хвост (АНИМИРОВАН) ----------
+            // Хвост
             Gl.glPushMatrix();
-            // Точка крепления хвоста — внутри тела, чуть сзади
             Gl.glTranslatef(0.0f, 0.10f, 0.45f);
-
-            // Вращение вокруг точки крепления (корня хвоста)
             Gl.glRotatef(20 + tailAngle, 1, 0, 0);
-
-            // Смещаем куб так, чтобы его начало (а не центр) было в точке крепления
-            // Куб по умолчанию центрирован, поэтому сдвигаем его на половину длины вперёд (в +Z)
-            Gl.glTranslatef(0.0f, 0.0f, 0.25f); // 0.5 * длина куба (0.5)
-
+            Gl.glTranslatef(0.0f, 0.0f, 0.25f);
             Gl.glColor3f(0.35f, 0.22f, 0.10f);
             Gl.glScaled(0.30f, 0.08f, 0.50f);
             Glut.glutSolidCube(1.0f);
             Gl.glPopMatrix();
 
-            // ---------- Лапки ----------
+            // Лапки
             Gl.glColor3f(0.90f, 0.70f, 0.20f);
-
-            // Левая лапка
             Gl.glPushMatrix();
             Gl.glTranslatef(-0.12f, -0.40f, 0.05f);
             Gl.glRotatef(-90, 1, 0, 0);
             Glu.gluCylinder(Glu.gluNewQuadric(), 0.025, 0.025, 0.25, 8, 8);
             Gl.glPopMatrix();
 
-            // Правая лапка
             Gl.glPushMatrix();
             Gl.glTranslatef(0.12f, -0.40f, 0.05f);
             Gl.glRotatef(-90, 1, 0, 0);
             Glu.gluCylinder(Glu.gluNewQuadric(), 0.025, 0.025, 0.25, 8, 8);
             Gl.glPopMatrix();
 
-            // ---------- Крылья ----------
+            // Крылья
             Gl.glColor3f(0.45f, 0.30f, 0.15f);
-
-            // Левое крыло
             Gl.glPushMatrix();
             Gl.glTranslatef(-0.42f, 0.10f, 0.0f);
             Gl.glRotatef(wingAngle, 0, 0, 1);
@@ -333,7 +322,6 @@ namespace Mayorov_Matvey_PRI_123_course
             Glut.glutSolidSphere(1.0, 12, 12);
             Gl.glPopMatrix();
 
-            // Правое крыло
             Gl.glPushMatrix();
             Gl.glTranslatef(0.42f, 0.10f, 0.0f);
             Gl.glRotatef(-wingAngle, 0, 0, 1);
@@ -342,38 +330,6 @@ namespace Mayorov_Matvey_PRI_123_course
             Gl.glPopMatrix();
 
             Gl.glPopMatrix();
-        }
-
-        // ==========================================
-        // 3D СЦЕНА (Зоопарк)
-        // ==========================================
-        private void Draw3DScene()
-        {
-            // 1. Земля (ЛР 9 - масштабирование)
-            Gl.glPushMatrix();
-            Gl.glColor3f(0.2f, 0.8f, 0.2f);
-            Gl.glTranslated(0, -0.1f, 0);
-            Gl.glScaled(20, 0.1, 20);
-            Glut.glutSolidCube(1.0f);
-            Gl.glPopMatrix();
-
-            // 2. Воробей (управляемый объект)
-            DrawSparrow();
-        }
-
-        private void DrawCage()
-        {
-            Gl.glColor3f(0.5f, 0.5f, 0.5f);
-            Gl.glLineWidth(2);
-            Gl.glBegin(Gl.GL_LINES);
-            for (int i = -2; i <= 2; i += 2)
-            {
-                Gl.glVertex3d(i, 0, -2); Gl.glVertex3d(i, 4, -2);
-                Gl.glVertex3d(i, 0, 2); Gl.glVertex3d(i, 4, 2);
-                Gl.glVertex3d(-2, 0, i); Gl.glVertex3d(-2, 4, i);
-                Gl.glVertex3d(2, 0, i); Gl.glVertex3d(2, 4, i);
-            }
-            Gl.glEnd();
         }
 
         // ==========================================
@@ -392,10 +348,8 @@ namespace Mayorov_Matvey_PRI_123_course
 
             Gl.glDisable(Gl.GL_LIGHTING);
 
-            // ==========================================
-            // 1. Фрактал "Бинарное дерево" (вариант 10)
-            // ==========================================
-            Gl.glColor3f(0.0f, 0.39f, 0.0f); // тёмно-зелёный (вариант 10)
+            // Фрактал
+            Gl.glColor3f(0.0f, 0.39f, 0.0f);
             Gl.glLineWidth(2.0f);
             Gl.glBegin(Gl.GL_LINES);
             foreach (var (start, end) in fractalBranches)
@@ -406,10 +360,8 @@ namespace Mayorov_Matvey_PRI_123_course
             Gl.glEnd();
             Gl.glLineWidth(1.0f);
 
-            // ==========================================
-            // 2. Кривая Безье (ЛР 8)
-            // ==========================================
-            Gl.glColor3f(0.8f, 0.2f, 0.2f); // красный, чтобы отличать от фрактала
+            // Кривая Безье
+            Gl.glColor3f(0.8f, 0.2f, 0.2f);
             Gl.glLineWidth(3.0f);
             Gl.glBegin(Gl.GL_LINE_STRIP);
 
@@ -434,7 +386,7 @@ namespace Mayorov_Matvey_PRI_123_course
         }
 
         // ==========================================
-        // 2D-РАСТРОВАЯ СЦЕНА (Спрайт по центру)
+        // 2D-РАСТРОВАЯ СЦЕНА (Только спрайт воробья)
         // ==========================================
         private void Draw2DRasterScene()
         {
@@ -448,36 +400,40 @@ namespace Mayorov_Matvey_PRI_123_course
             Gl.glLoadIdentity();
 
             Gl.glDisable(Gl.GL_LIGHTING);
+            Gl.glEnable(Gl.GL_TEXTURE_2D);
+            Gl.glEnable(Gl.GL_BLEND);
+            Gl.glBlendFunc(Gl.GL_SRC_ALPHA, Gl.GL_ONE_MINUS_SRC_ALPHA);
 
-            if (sparrowAtlas != null)
+            // Выводим спрайт воробья по центру
+            if (spriteTextures != null && spriteTextures.Length > 0)
             {
-                Bitmap currentFrame = GetSpriteFrame(sparrowAtlas, currentSpriteFrame);
-                // Преобразуем в RGBA (с альфа-каналом)
-                Bitmap frameRGBA = new Bitmap(currentFrame.Width, currentFrame.Height, PixelFormat.Format32bppArgb);
-                using (Graphics g = Graphics.FromImage(frameRGBA))
-                {
-                    g.DrawImage(currentFrame, 0, 0);
-                }
+                Gl.glBindTexture(Gl.GL_TEXTURE_2D, spriteTextures[currentSpriteFrame]);
+                Gl.glColor3f(1, 1, 1);
 
-                byte[] spritePixels = BitmapToByteArrayRGBA(frameRGBA);
+                float sprX = (AnT.Width - spriteFrameWidth) / 2.0f;
+                float sprY = (AnT.Height - spriteFrameHeight) / 2.0f;
 
-                int drawX = (AnT.Width - spriteFrameWidth) / 2;
-                int drawY = (AnT.Height - spriteFrameHeight) / 2;
-
-                Gl.glRasterPos2i(drawX, drawY);
-                Gl.glDrawPixels(frameRGBA.Width, frameRGBA.Height,
-                                Gl.GL_RGBA, Gl.GL_UNSIGNED_BYTE, spritePixels);
-
-                currentFrame.Dispose();
-                frameRGBA.Dispose();
+                Gl.glBegin(Gl.GL_QUADS);
+                Gl.glTexCoord2f(0, 0); Gl.glVertex2f(sprX, sprY);
+                Gl.glTexCoord2f(1, 0); Gl.glVertex2f(sprX + spriteFrameWidth, sprY);
+                Gl.glTexCoord2f(1, 1); Gl.glVertex2f(sprX + spriteFrameWidth, sprY + spriteFrameHeight);
+                Gl.glTexCoord2f(0, 1); Gl.glVertex2f(sprX, sprY + spriteFrameHeight);
+                Gl.glEnd();
             }
 
+            Gl.glDisable(Gl.GL_TEXTURE_2D);
+            Gl.glDisable(Gl.GL_BLEND);
             Gl.glEnable(Gl.GL_LIGHTING);
+
             Gl.glPopMatrix();
             Gl.glMatrixMode(Gl.GL_PROJECTION);
             Gl.glPopMatrix();
             Gl.glMatrixMode(Gl.GL_MODELVIEW);
         }
+
+        // ==========================================
+        // ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ
+        // ==========================================
 
         // Извлекает один кадр из горизонтального атласа
         private Bitmap GetSpriteFrame(Bitmap atlas, int frameIndex)
@@ -495,52 +451,26 @@ namespace Mayorov_Matvey_PRI_123_course
             return frame;
         }
 
-        // Преобразование Bitmap в массив байтов RGB (с переворотом по Y)
-        private byte[] BitmapToByteArray(Bitmap bmp)
+        // Загрузка текстуры из Bitmap в OpenGL
+        private uint LoadTextureFromBitmap(Bitmap bmp)
         {
-            int width = bmp.Width;
-            int height = bmp.Height;
-            byte[] result = new byte[width * height * 3];
+            uint texId = 0;
+            Gl.glGenTextures(1, out texId);
+            Gl.glBindTexture(Gl.GL_TEXTURE_2D, texId);
 
-            // Блокируем биты для быстрого доступа
-            BitmapData data = bmp.LockBits(
-                new Rectangle(0, 0, width, height),
-                ImageLockMode.ReadOnly,
-                PixelFormat.Format24bppRgb);
+            Gl.glTexParameteri(Gl.GL_TEXTURE_2D, Gl.GL_TEXTURE_MIN_FILTER, Gl.GL_LINEAR);
+            Gl.glTexParameteri(Gl.GL_TEXTURE_2D, Gl.GL_TEXTURE_MAG_FILTER, Gl.GL_LINEAR);
 
-            try
-            {
-                unsafe
-                {
-                    byte* ptr = (byte*)data.Scan0;
-                    int stride = data.Stride;
+            byte[] pixels = BitmapToByteArrayRGBA(bmp);
 
-                    // OpenGL ожидает изображение снизу вверх, поэтому идем с конца
-                    for (int y = 0; y < height; y++)
-                    {
-                        // Строка в исходном изображении (сверху вниз)
-                        int srcY = height - 1 - y;
-                        byte* row = ptr + srcY * stride;
+            Gl.glTexImage2D(Gl.GL_TEXTURE_2D, 0, Gl.GL_RGBA,
+                            bmp.Width, bmp.Height, 0,
+                            Gl.GL_RGBA, Gl.GL_UNSIGNED_BYTE, pixels);
 
-                        for (int x = 0; x < width; x++)
-                        {
-                            // Format24bppRgb хранит BGR, а не RGB
-                            result[(y * width + x) * 3 + 0] = row[x * 3 + 2]; // R
-                            result[(y * width + x) * 3 + 1] = row[x * 3 + 1]; // G
-                            result[(y * width + x) * 3 + 2] = row[x * 3 + 0]; // B
-                        }
-                    }
-                }
-            }
-            finally
-            {
-                bmp.UnlockBits(data);
-            }
-
-            return result;
+            return texId;
         }
 
-        // Преобразование Bitmap в массив байтов RGBA (с альфа-каналом)
+        // Преобразование Bitmap в массив байтов RGBA (с переворотом по Y)
         private byte[] BitmapToByteArrayRGBA(Bitmap bmp)
         {
             int width = bmp.Width;
@@ -567,7 +497,6 @@ namespace Mayorov_Matvey_PRI_123_course
                         for (int x = 0; x < width; x++)
                         {
                             int idx = (y * width + x) * 4;
-                            // Format32bppArgb хранит BGRA
                             result[idx + 0] = row[x * 4 + 2]; // R
                             result[idx + 1] = row[x * 4 + 1]; // G
                             result[idx + 2] = row[x * 4 + 0]; // B
@@ -584,117 +513,22 @@ namespace Mayorov_Matvey_PRI_123_course
             return result;
         }
 
-        // ==========================================
-        // ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ
-        // ==========================================
-
-        // Поверхность вращения на основе кривой Безье (ЛР 8, вариант 10)
-        private void DrawBezierRevolvedSurface()
-        {
-            int segments = 20; // Количество сегментов по окружности
-            int curveSteps = 20; // Количество точек на кривой
-
-            // Контрольные точки кривой Безье (профиль поилки)
-            float[] px = { 0.0f, 0.5f, 1.0f, 0.8f };
-            float[] py = { 0.0f, 1.0f, 1.5f, 2.0f };
-
-            // Генерируем массив точек кривой Безье
-            List<PointF> curvePoints = new List<PointF>();
-            for (int i = 0; i <= curveSteps; i++)
-            {
-                float t = (float)i / curveSteps;
-                float x = (float)(Math.Pow(1 - t, 3) * px[0] + 3 * Math.Pow(1 - t, 2) * t * px[1] + 3 * (1 - t) * Math.Pow(t, 2) * px[2] + Math.Pow(t, 3) * px[3]);
-                float y = (float)(Math.Pow(1 - t, 3) * py[0] + 3 * Math.Pow(1 - t, 2) * t * py[1] + 3 * (1 - t) * Math.Pow(t, 2) * py[2] + Math.Pow(t, 3) * py[3]);
-                curvePoints.Add(new PointF(x, y));
-            }
-
-            // Строим поверхность вращения
-            Gl.glBegin(Gl.GL_QUAD_STRIP);
-            for (int i = 0; i <= segments; i++)
-            {
-                float angle = (float)(2 * Math.PI * i / segments);
-                float cosA = (float)Math.Cos(angle);
-                float sinA = (float)Math.Sin(angle);
-
-                foreach (var p in curvePoints)
-                {
-                    Gl.glVertex3f(p.X * cosA, p.Y, p.X * sinA);
-                }
-            }
-            Gl.glEnd();
-        }
-
-        // Генерация бинарного дерева (вариант 10) — для 2D-векторной сцены
+        // Генерация бинарного дерева
         private List<(PointF start, PointF end)> fractalBranches = new List<(PointF, PointF)>();
 
         private void GenerateBinaryTree(float x, float y, float length, float angleDeg, int iteration)
         {
-            if (iteration > 7) return; // глубина рекурсии
+            if (iteration > 7) return;
 
-            // Конец текущей ветви
             float rad = (float)(angleDeg * Math.PI / 180);
             float endX = x + length * (float)Math.Sin(rad);
             float endY = y + length * (float)Math.Cos(rad);
 
-            // Сохраняем ветвь как отрезок
             fractalBranches.Add((new PointF(x, y), new PointF(endX, endY)));
 
-            // Две ветви отклоняются на ±25°
             float newLength = length * 0.72f;
             GenerateBinaryTree(endX, endY, newLength, angleDeg - 25, iteration + 1);
             GenerateBinaryTree(endX, endY, newLength, angleDeg + 25, iteration + 1);
-        }
-
-        // Создание тестового изображения (для акварелизации)
-        private Bitmap CreateTestImage()
-        {
-            Bitmap bmp = new Bitmap(AnT.Width, AnT.Height);
-            using (Graphics g = Graphics.FromImage(bmp))
-            {
-                g.Clear(Color.LightBlue);
-                // Рисуем простой пейзаж для теста
-                g.FillRectangle(Brushes.Green, 0, AnT.Height / 2, AnT.Width, AnT.Height / 2);
-                g.FillEllipse(Brushes.Yellow, AnT.Width / 2 - 50, 50, 100, 100); // Солнце
-                g.FillRectangle(Brushes.Brown, 100, 300, 50, 200); // Ствол дерева
-                g.FillEllipse(Brushes.DarkGreen, 50, 200, 150, 150); // Крона
-            }
-            return bmp;
-        }
-
-        // Фильтр "Акварелизация" (ЛР 7, вариант 10)
-        private Bitmap ApplyWatercolorFilter(Bitmap original)
-        {
-            Bitmap result = new Bitmap(original.Width, original.Height);
-
-            // Упрощенная акварелизация: размытие + усиление контуров
-            // В реальности это сложный алгоритм, но для демонстрации сойдет
-            for (int x = 1; x < original.Width - 1; x++)
-            {
-                for (int y = 1; y < original.Height - 1; y++)
-                {
-                    // Берем среднее значение цвета (размытие)
-                    int r = 0, g = 0, b = 0;
-                    for (int i = -1; i <= 1; i++)
-                    {
-                        for (int j = -1; j <= 1; j++)
-                        {
-                            Color pixel = original.GetPixel(x + i, y + j);
-                            r += pixel.R;
-                            g += pixel.G;
-                            b += pixel.B;
-                        }
-                    }
-                    r /= 9; g /= 9; b /= 9;
-
-                    // Для акварели немного повышаем яркость
-                    r = Math.Min(255, r + 20);
-                    g = Math.Min(255, g + 20);
-                    b = Math.Min(255, b + 20);
-
-                    result.SetPixel(x, y, Color.FromArgb(r, g, b));
-                }
-            }
-            return result;
         }
 
         // === УПРАВЛЕНИЕ ===
@@ -703,28 +537,12 @@ namespace Mayorov_Matvey_PRI_123_course
             float speed = 0.5f;
             switch (e.KeyCode)
             {
-                case Keys.W: // вперёд (от камеры, -Z)
-                    sparrowZ -= speed;
-                    sparrowTargetAngle = 0f;
-                    break;
-                case Keys.S: // назад (к камере, +Z)
-                    sparrowZ += speed;
-                    sparrowTargetAngle = 180f;
-                    break;
-                case Keys.A: // влево (-X)
-                    sparrowX -= speed;
-                    sparrowTargetAngle = 90f;
-                    break;
-                case Keys.D: // вправо (+X)
-                    sparrowX += speed;
-                    sparrowTargetAngle = -90f;
-                    break;
-                case Keys.Space:
-                    sparrowY += speed;
-                    break;
-                case Keys.ShiftKey:
-                    sparrowY -= speed;
-                    break;
+                case Keys.W: sparrowZ -= speed; sparrowTargetAngle = 0f; break;
+                case Keys.S: sparrowZ += speed; sparrowTargetAngle = 180f; break;
+                case Keys.A: sparrowX -= speed; sparrowTargetAngle = 90f; break;
+                case Keys.D: sparrowX += speed; sparrowTargetAngle = -90f; break;
+                case Keys.Space: sparrowY += speed; break;
+                case Keys.ShiftKey: sparrowY -= speed; break;
             }
         }
 
@@ -757,9 +575,6 @@ namespace Mayorov_Matvey_PRI_123_course
         private void toolStripButtonLight_Click(object sender, EventArgs e) { lightingEnabled = !lightingEnabled; }
         private void toolStripButtonExit_Click(object sender, EventArgs e) { Application.Exit(); }
 
-        private void toolStrip1_ItemClicked(object sender, ToolStripItemClickedEventArgs e)
-        {
-
-        }
+        private void toolStrip1_ItemClicked(object sender, ToolStripItemClickedEventArgs e) { }
     }
 }
