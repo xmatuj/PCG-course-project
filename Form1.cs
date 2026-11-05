@@ -52,12 +52,12 @@ namespace Mayorov_Matvey_PRI_123_course
         // === Инициализация OpenGL ===
         private bool glInitialized = false;
 
-        // === Объекты сцены (ЛР 9 - Геометрические преобразования) ===
-        // Позиция воробья
+        // Позиция и направление воробья
         private float sparrowX = 0.0f;
         private float sparrowY = 2.0f;
         private float sparrowZ = 0.0f;
-        private float sparrowAngle = 0.0f;
+        private float sparrowAngle = 0.0f;        // текущий угол поворота (градусы)
+        private float sparrowTargetAngle = 0.0f;  // угол, к которому нужно повернуться
 
         // Для 2D-растровой сцены (ЛР 7, акварелизация)
         private Bitmap originalImage;
@@ -168,6 +168,23 @@ namespace Mayorov_Matvey_PRI_123_course
                 }
             }
 
+            // Плавный поворот к целевому углу
+            float diff = sparrowTargetAngle - sparrowAngle;
+            // Нормализуем в диапазон [-180, 180], чтобы не крутиться на 350°
+            if (diff > 180) diff -= 360;
+            if (diff < -180) diff += 360;
+
+            // Плавно уменьшаем разницу
+            float rotateSpeed = 6.0f;
+            if (Math.Abs(diff) < rotateSpeed)
+                sparrowAngle = sparrowTargetAngle;
+            else
+                sparrowAngle += Math.Sign(diff) * rotateSpeed;
+
+            // Приводим угол к диапазону [0, 360)
+            if (sparrowAngle >= 360) sparrowAngle -= 360;
+            if (sparrowAngle < 0) sparrowAngle += 360;
+
             Draw();
             toolStripLabelScene.Text = $"Сцена: {sceneNames[currentScene]}";
         }
@@ -211,6 +228,122 @@ namespace Mayorov_Matvey_PRI_123_course
             AnT.Invalidate();
         }
 
+        private void DrawSparrow()
+        {
+            Gl.glPushMatrix();
+            Gl.glTranslatef(sparrowX, sparrowY, sparrowZ);
+            Gl.glRotatef(sparrowAngle, 0, 1, 0);
+
+            float wingAngle = animationEnabled ? (float)Math.Sin(time * 10) * 25 : 0;
+            float tailAngle = animationEnabled ? (float)Math.Sin(time * 6) * 10 : 0;
+
+            // ---------- Тело ----------
+            Gl.glColor3f(0.55f, 0.38f, 0.20f);
+            Gl.glPushMatrix();
+            Gl.glScaled(0.45f, 0.40f, 0.70f);
+            Glut.glutSolidSphere(1.0, 20, 20);
+            Gl.glPopMatrix();
+
+            // ---------- Голова ----------
+            Gl.glPushMatrix();
+            Gl.glTranslatef(0.0f, 0.35f, -0.55f);
+            Gl.glColor3f(0.60f, 0.45f, 0.25f);
+            Gl.glScaled(0.32f, 0.32f, 0.32f);
+            Glut.glutSolidSphere(1.0, 16, 16);
+            Gl.glPopMatrix();
+
+            // ---------- Шапочка (ВЫНЕСЕНА НА ПОВЕРХНОСТЬ) ----------
+            // Центр головы: (0, 0.35, -0.55), радиус 0.32
+            // Шапочка должна быть на верхней-задней части головы
+            Gl.glPushMatrix();
+            Gl.glTranslatef(0.0f, 0.68f, -0.55f); // Y = 0.35 + 0.33 (на поверхности)
+            Gl.glColor3f(0.20f, 0.12f, 0.06f);   // тёмно-коричневый
+            Gl.glScaled(0.30f, 0.10f, 0.30f);
+            Glut.glutSolidSphere(1.0, 12, 12);
+            Gl.glPopMatrix();
+
+            // ---------- Глаза (ВЫНЕСЕНЫ НА ПОВЕРХНОСТЬ) ----------
+            Gl.glColor3f(0.05f, 0.05f, 0.05f);
+
+            // Левый глаз: сбоку-спереди головы
+            // Центр головы (0, 0.35, -0.55), смещение по X: ±0.28, по Y: +0.05, по Z: -0.20
+            Gl.glPushMatrix();
+            Gl.glTranslatef(-0.26f, 0.40f, -0.75f);
+            Gl.glScaled(0.07f, 0.07f, 0.07f);
+            Glut.glutSolidSphere(1.0, 8, 8);
+            Gl.glPopMatrix();
+
+            // Правый глаз
+            Gl.glPushMatrix();
+            Gl.glTranslatef(0.26f, 0.40f, -0.75f);
+            Gl.glScaled(0.07f, 0.07f, 0.07f);
+            Glut.glutSolidSphere(1.0, 8, 8);
+            Gl.glPopMatrix();
+
+            // ---------- Клюв ----------
+            Gl.glPushMatrix();
+            Gl.glTranslatef(0.0f, 0.32f, -0.8f); // чуть ниже глаз, вперёд
+            Gl.glRotatef(180, 1, 0, 0);           // остриё вперёд (-Z)
+            Gl.glColor3f(0.95f, 0.70f, 0.10f);    // жёлто-оранжевый
+            Glut.glutSolidCone(0.08, 0.25, 10, 10);
+            Gl.glPopMatrix();
+
+            // ---------- Хвост (АНИМИРОВАН) ----------
+            Gl.glPushMatrix();
+            // Точка крепления хвоста — внутри тела, чуть сзади
+            Gl.glTranslatef(0.0f, 0.10f, 0.45f);
+
+            // Вращение вокруг точки крепления (корня хвоста)
+            Gl.glRotatef(20 + tailAngle, 1, 0, 0);
+
+            // Смещаем куб так, чтобы его начало (а не центр) было в точке крепления
+            // Куб по умолчанию центрирован, поэтому сдвигаем его на половину длины вперёд (в +Z)
+            Gl.glTranslatef(0.0f, 0.0f, 0.25f); // 0.5 * длина куба (0.5)
+
+            Gl.glColor3f(0.35f, 0.22f, 0.10f);
+            Gl.glScaled(0.30f, 0.08f, 0.50f);
+            Glut.glutSolidCube(1.0f);
+            Gl.glPopMatrix();
+
+            // ---------- Лапки ----------
+            Gl.glColor3f(0.90f, 0.70f, 0.20f);
+
+            // Левая лапка
+            Gl.glPushMatrix();
+            Gl.glTranslatef(-0.12f, -0.40f, 0.05f);
+            Gl.glRotatef(-90, 1, 0, 0);
+            Glu.gluCylinder(Glu.gluNewQuadric(), 0.025, 0.025, 0.25, 8, 8);
+            Gl.glPopMatrix();
+
+            // Правая лапка
+            Gl.glPushMatrix();
+            Gl.glTranslatef(0.12f, -0.40f, 0.05f);
+            Gl.glRotatef(-90, 1, 0, 0);
+            Glu.gluCylinder(Glu.gluNewQuadric(), 0.025, 0.025, 0.25, 8, 8);
+            Gl.glPopMatrix();
+
+            // ---------- Крылья ----------
+            Gl.glColor3f(0.45f, 0.30f, 0.15f);
+
+            // Левое крыло
+            Gl.glPushMatrix();
+            Gl.glTranslatef(-0.42f, 0.10f, 0.0f);
+            Gl.glRotatef(wingAngle, 0, 0, 1);
+            Gl.glScaled(0.35f, 0.10f, 0.45f);
+            Glut.glutSolidSphere(1.0, 12, 12);
+            Gl.glPopMatrix();
+
+            // Правое крыло
+            Gl.glPushMatrix();
+            Gl.glTranslatef(0.42f, 0.10f, 0.0f);
+            Gl.glRotatef(-wingAngle, 0, 0, 1);
+            Gl.glScaled(0.35f, 0.10f, 0.45f);
+            Glut.glutSolidSphere(1.0, 12, 12);
+            Gl.glPopMatrix();
+
+            Gl.glPopMatrix();
+        }
+
         // ==========================================
         // 3D СЦЕНА (Зоопарк)
         // ==========================================
@@ -224,51 +357,8 @@ namespace Mayorov_Matvey_PRI_123_course
             Glut.glutSolidCube(1.0f);
             Gl.glPopMatrix();
 
-            // 3. Клетка льва (ЛР 9 - перенос)
-            Gl.glPushMatrix();
-            Gl.glTranslated(-5, 1, -5);
-            DrawCage();
-            Gl.glPopMatrix();
-
-            // 4. Воробей (Управляемый объект, ЛР 9)
-            Gl.glPushMatrix();
-            Gl.glTranslatef(sparrowX, sparrowY, sparrowZ);
-            Gl.glRotatef(sparrowAngle, 0, 1, 0);
-
-            float wingAngle = (float)Math.Sin(time * 10) * 20;
-
-            // Тело
-            Gl.glColor3f(0.6f, 0.4f, 0.2f);
-            Gl.glPushMatrix();
-            Gl.glScaled(0.5, 0.4, 0.7);
-            Glut.glutSolidSphere(1.0, 16, 16);
-            Gl.glPopMatrix();
-
-            // Крылья
-            Gl.glColor3f(0.5f, 0.3f, 0.1f);
-            Gl.glPushMatrix();
-            Gl.glTranslated(-0.3, 0.1, 0);
-            Gl.glRotated(wingAngle, 0, 0, 1);
-            Gl.glScaled(0.1, 0.3, 0.5);
-            Glut.glutSolidSphere(1.0, 8, 8);
-            Gl.glPopMatrix();
-
-            Gl.glPushMatrix();
-            Gl.glTranslated(0.3, 0.1, 0);
-            Gl.glRotated(-wingAngle, 0, 0, 1);
-            Gl.glScaled(0.1, 0.3, 0.5);
-            Glut.glutSolidSphere(1.0, 8, 8);
-            Gl.glPopMatrix();
-
-            Gl.glPopMatrix();
-
-            // 5. Поверхность вращения на основе кривой Безье (ЛР 8, вариант 10)
-            // Поилка для моржа (или просто декоративный объект)
-            Gl.glPushMatrix();
-            Gl.glTranslated(5, 1, -5);
-            Gl.glColor3f(0.7f, 0.7f, 0.8f);
-            DrawBezierRevolvedSurface();
-            Gl.glPopMatrix();
+            // 2. Воробей (управляемый объект)
+            DrawSparrow();
         }
 
         private void DrawCage()
@@ -613,12 +703,28 @@ namespace Mayorov_Matvey_PRI_123_course
             float speed = 0.5f;
             switch (e.KeyCode)
             {
-                case Keys.W: sparrowZ -= speed; break;
-                case Keys.S: sparrowZ += speed; break;
-                case Keys.A: sparrowX -= speed; sparrowAngle = -90; break;
-                case Keys.D: sparrowX += speed; sparrowAngle = 90; break;
-                case Keys.Space: sparrowY += speed; break;
-                case Keys.ShiftKey: sparrowY -= speed; break;
+                case Keys.W: // вперёд (от камеры, -Z)
+                    sparrowZ -= speed;
+                    sparrowTargetAngle = 0f;
+                    break;
+                case Keys.S: // назад (к камере, +Z)
+                    sparrowZ += speed;
+                    sparrowTargetAngle = 180f;
+                    break;
+                case Keys.A: // влево (-X)
+                    sparrowX -= speed;
+                    sparrowTargetAngle = 90f;
+                    break;
+                case Keys.D: // вправо (+X)
+                    sparrowX += speed;
+                    sparrowTargetAngle = -90f;
+                    break;
+                case Keys.Space:
+                    sparrowY += speed;
+                    break;
+                case Keys.ShiftKey:
+                    sparrowY -= speed;
+                    break;
             }
         }
 
