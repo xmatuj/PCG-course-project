@@ -68,6 +68,8 @@ namespace Mayorov_Matvey_PRI_123_course
         // Спрайт с фильтром "Акварелизация"
         private uint[] spriteTexturesWatercolor;
 
+        private Glu.GLUquadric quadric;
+
         public Form1()
         {
             InitializeComponent();
@@ -104,6 +106,7 @@ namespace Mayorov_Matvey_PRI_123_course
             Gl.glEnable(Gl.GL_NORMALIZE);
             Gl.glEnable(Gl.GL_BLEND);
             Gl.glBlendFunc(Gl.GL_SRC_ALPHA, Gl.GL_ONE_MINUS_SRC_ALPHA);
+            quadric = Glu.gluNewQuadric();
 
             glInitialized = true;
 
@@ -324,13 +327,13 @@ namespace Mayorov_Matvey_PRI_123_course
             Gl.glPushMatrix();
             Gl.glTranslatef(-0.12f, -0.40f, 0.05f);
             Gl.glRotatef(-90, 1, 0, 0);
-            Glu.gluCylinder(Glu.gluNewQuadric(), 0.025, 0.025, 0.25, 8, 8);
+            Glu.gluCylinder(quadric, 0.025, 0.025, 0.25, 8, 8);
             Gl.glPopMatrix();
 
             Gl.glPushMatrix();
             Gl.glTranslatef(0.12f, -0.40f, 0.05f);
             Gl.glRotatef(-90, 1, 0, 0);
-            Glu.gluCylinder(Glu.gluNewQuadric(), 0.025, 0.025, 0.25, 8, 8);
+            Glu.gluCylinder(quadric, 0.025, 0.025, 0.25, 8, 8);
             Gl.glPopMatrix();
 
             // Крылья
