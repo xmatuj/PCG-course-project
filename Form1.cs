@@ -65,6 +65,9 @@ namespace Mayorov_Matvey_PRI_123_course
         // ID текстур для каждого кадра
         private uint[] spriteTextures;
 
+        // Спрайт с фильтром "Акварелизация"
+        private uint[] spriteTexturesWatercolor;
+
         public Form1()
         {
             InitializeComponent();
@@ -130,6 +133,23 @@ namespace Mayorov_Matvey_PRI_123_course
 
                         frame.Dispose();
                         frameRGBA.Dispose();
+                    }
+
+                    // Загружаем текстуры с фильтром "Акварелизация"
+                    spriteTexturesWatercolor = new uint[spriteFrameCount];
+                    for (int i = 0; i < spriteFrameCount; i++)
+                    {
+                        Bitmap frame = GetSpriteFrame(sparrowAtlas, i);
+                        Bitmap frameRGBA = new Bitmap(frame.Width, frame.Height, PixelFormat.Format32bppArgb);
+                        using (Graphics g = Graphics.FromImage(frameRGBA)) { g.DrawImage(frame, 0, 0); }
+
+                        // Применяем фильтр "Акварелизация"
+                        Bitmap filtered = ApplyWatercolorFilter(frameRGBA);
+                        spriteTexturesWatercolor[i] = LoadTextureFromBitmap(filtered);
+
+                        frame.Dispose();
+                        frameRGBA.Dispose();
+                        filtered.Dispose();
                     }
                 }
                 else
@@ -403,14 +423,30 @@ namespace Mayorov_Matvey_PRI_123_course
             Gl.glEnable(Gl.GL_TEXTURE_2D);
             Gl.glEnable(Gl.GL_BLEND);
             Gl.glBlendFunc(Gl.GL_SRC_ALPHA, Gl.GL_ONE_MINUS_SRC_ALPHA);
+            Gl.glColor3f(1, 1, 1);
 
-            // Выводим спрайт воробья по центру
+            // Левый спрайт — обычный
             if (spriteTextures != null && spriteTextures.Length > 0)
             {
                 Gl.glBindTexture(Gl.GL_TEXTURE_2D, spriteTextures[currentSpriteFrame]);
-                Gl.glColor3f(1, 1, 1);
 
-                float sprX = (AnT.Width - spriteFrameWidth) / 2.0f;
+                float sprX = AnT.Width / 4.0f - spriteFrameWidth / 2.0f;
+                float sprY = (AnT.Height - spriteFrameHeight) / 2.0f;
+
+                Gl.glBegin(Gl.GL_QUADS);
+                Gl.glTexCoord2f(0, 0); Gl.glVertex2f(sprX, sprY);
+                Gl.glTexCoord2f(1, 0); Gl.glVertex2f(sprX + spriteFrameWidth, sprY);
+                Gl.glTexCoord2f(1, 1); Gl.glVertex2f(sprX + spriteFrameWidth, sprY + spriteFrameHeight);
+                Gl.glTexCoord2f(0, 1); Gl.glVertex2f(sprX, sprY + spriteFrameHeight);
+                Gl.glEnd();
+            }
+
+            // Правый спрайт — с фильтром "Акварелизация"
+            if (spriteTexturesWatercolor != null && spriteTexturesWatercolor.Length > 0)
+            {
+                Gl.glBindTexture(Gl.GL_TEXTURE_2D, spriteTexturesWatercolor[currentSpriteFrame]);
+
+                float sprX = 3.0f * AnT.Width / 4.0f - spriteFrameWidth / 2.0f;
                 float sprY = (AnT.Height - spriteFrameHeight) / 2.0f;
 
                 Gl.glBegin(Gl.GL_QUADS);
@@ -434,6 +470,40 @@ namespace Mayorov_Matvey_PRI_123_course
         // ==========================================
         // ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ
         // ==========================================
+
+        // Фильтр "Акварелизация"
+        private Bitmap ApplyWatercolorFilter(Bitmap original)
+        {
+            Bitmap result = new Bitmap(original.Width, original.Height);
+
+            for (int x = 1; x < original.Width - 1; x++)
+            {
+                for (int y = 1; y < original.Height - 1; y++)
+                {
+                    int r = 0, g = 0, b = 0;
+                    for (int i = -1; i <= 1; i++)
+                    {
+                        for (int j = -1; j <= 1; j++)
+                        {
+                            Color pixel = original.GetPixel(x + i, y + j);
+                            r += pixel.R;
+                            g += pixel.G;
+                            b += pixel.B;
+                        }
+                    }
+                    r /= 9; g /= 9; b /= 9;
+
+                    r = Math.Min(255, r + 20);
+                    g = Math.Min(255, g + 20);
+                    b = Math.Min(255, b + 20);
+
+                    // Сохраняем альфа-канал из исходного пикселя
+                    Color orig = original.GetPixel(x, y);
+                    result.SetPixel(x, y, Color.FromArgb(orig.A, r, g, b));
+                }
+            }
+            return result;
+        }
 
         // Извлекает один кадр из горизонтального атласа
         private Bitmap GetSpriteFrame(Bitmap atlas, int frameIndex)
